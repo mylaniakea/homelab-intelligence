@@ -12,6 +12,8 @@ class SettingsBase(BaseModel):
     cron_7day_report: Optional[str] = "0 3 * * 1"
     cron_monthly_report: Optional[str] = "0 4 1 * *"
 
+    polling_interval: Optional[int] = 30 # Dashboard polling interval in seconds
+
 
 class SettingsCreate(SettingsBase):
     pass

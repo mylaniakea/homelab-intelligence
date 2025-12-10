@@ -7,14 +7,16 @@ interface CronSettings {
   cron_24hr_report: string;
   cron_7day_report: string;
   cron_monthly_report: string;
+  polling_interval: number;
 }
 
 const Automations: React.FC = () => {
   const { showNotification } = useNotification();
-  const [settings, setSettings] = useState<CronSettings>({ 
-    cron_24hr_report: "0 2 * * *", 
-    cron_7day_report: "0 3 * * 1", 
-    cron_monthly_report: "0 4 1 * *" 
+  const [settings, setSettings] = useState<CronSettings>({
+    cron_24hr_report: "0 2 * * *",
+    cron_7day_report: "0 3 * * 1",
+    cron_monthly_report: "0 4 1 * *",
+    polling_interval: 30
   });
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +31,7 @@ const Automations: React.FC = () => {
         cron_24hr_report: res.data.cron_24hr_report || "0 2 * * *",
         cron_7day_report: res.data.cron_7day_report || "0 3 * * 1",
         cron_monthly_report: res.data.cron_monthly_report || "0 4 1 * *",
+        polling_interval: res.data.polling_interval || 30,
       });
     } catch (error) {
       console.error("Failed to fetch settings", error);
@@ -74,6 +77,22 @@ const Automations: React.FC = () => {
     label: String(i + 1),
     value: String(i + 1),
   }));
+
+  // Polling interval options
+  const pollingOptions = [
+    { label: "15 seconds", value: 15 },
+    { label: "30 seconds", value: 30 },
+    { label: "60 seconds", value: 60 },
+    { label: "5 minutes", value: 300 },
+    { label: "10 minutes", value: 600 },
+    { label: "20 minutes", value: 1200 },
+    { label: "40 minutes", value: 2400 },
+    { label: "60 minutes", value: 3600 },
+    { label: "4 hours", value: 14400 },
+    { label: "6 hours", value: 21600 },
+    { label: "8 hours", value: 28800 },
+    { label: "12 hours", value: 43200 },
+  ];
 
   const parseCron = (cron: string) => {
     const parts = cron.split(' ');
@@ -154,6 +173,27 @@ const Automations: React.FC = () => {
           <Save size={18} className={loading ? "animate-spin" : ""} />
           {loading ? "Saving..." : "Save Settings"}
         </button>
+      </div>
+
+      {/* Polling Settings */}
+      <div className="bg-card border border-border rounded-xl p-6">
+        <h3 className="text-xl font-semibold mb-4">Dashboard Polling</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Configure how frequently the Dashboard refreshes real-time statistics.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <label className="block text-sm font-medium text-muted-foreground">Polling Interval:</label>
+          <select
+            className="bg-input border border-border rounded-md px-3 py-2 focus:ring-1 focus:ring-primary outline-none col-span-2"
+            value={settings.polling_interval}
+            onChange={(e) => setSettings(prev => ({ ...prev, polling_interval: parseInt(e.target.value) }))}
+            disabled={loading}
+          >
+            {pollingOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="space-y-6">

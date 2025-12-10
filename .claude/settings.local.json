@@ -9,7 +9,13 @@
       "Bash(docker-compose up:*)",
       "Bash(curl:*)",
       "Bash(docker-compose exec:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(docker volume:*)",
+      "Bash(sqlite3:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)"
     ]
   }
 }

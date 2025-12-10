@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { HardDrive, Cpu, Server as ServerIcon, MemoryStick, Activity } from 'lucide-react';
+import { HardDrive, Cpu, Server as ServerIcon, MemoryStick, FileText } from 'lucide-react';
 import api from '@/api/client';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,7 @@ export default function Dashboard() {
     const [stats, setStats] = useState<SystemStats | null>(null);
     const [dashStats, setDashStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [pollingInterval, setPollingInterval] = useState<number>(30); // Default to 30 seconds
 
     const fetchStats = async () => {
         try {
@@ -34,11 +35,24 @@ export default function Dashboard() {
         }
     };
 
+    const fetchPollingInterval = async () => {
+        try {
+            const res = await api.get('/settings/');
+            setPollingInterval(res.data.polling_interval || 30);
+        } catch (error) {
+            console.error("Failed to fetch polling interval", error);
+        }
+    };
+
     useEffect(() => {
+        fetchPollingInterval();
         fetchStats();
-        const interval = setInterval(fetchStats, 5000);
-        return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        const interval = setInterval(fetchStats, pollingInterval * 1000); // Convert to milliseconds
+        return () => clearInterval(interval);
+    }, [pollingInterval]);
 
     if (loading) return <div className="p-10 text-center">Loading System Intelligence...</div>;
 
@@ -95,7 +109,7 @@ export default function Dashboard() {
                         title="Generated Reports"
                         value={dashStats?.counts?.reports || 0}
                         subtext="System Analyses"
-                        icon={Activity}
+                        icon={FileText}
                         color="text-pink-500"
                     />
                     <StatCard

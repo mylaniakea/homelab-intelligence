@@ -10,16 +10,20 @@ import Homelab from './pages/Homelab';
 import ServerHardware from './pages/ServerHardware';
 import Automations from './pages/Automations';
 import Plugins from './pages/Plugins';
+import Thresholds from './pages/Thresholds';
+import Alerts from './pages/Alerts';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ConfirmDialogProvider } from '@/contexts/ConfirmDialogContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 function App() {
     return (
-        <SidebarProvider>
-            <ConfirmDialogProvider>
-                <NotificationProvider>
-                    <Router>
+        <ThemeProvider>
+            <SidebarProvider>
+                <ConfirmDialogProvider>
+                    <NotificationProvider>
+                        <Router>
                         <Routes>
                             <Route path="/" element={<Layout />}>
                                 <Route index element={<Dashboard />} />
@@ -30,14 +34,17 @@ function App() {
                                 <Route path="ai" element={<Intelligence />} />
                                 <Route path="reports" element={<Reports />} />
                                 <Route path="knowledge" element={<Knowledge />} />
+                                <Route path="thresholds" element={<Thresholds />} />
+                                <Route path="alerts" element={<Alerts />} />
                                 <Route path="automations" element={<Automations />} />
                                 <Route path="settings" element={<Settings />} />
                             </Route>
                         </Routes>
-                    </Router>
-                </NotificationProvider>
-            </ConfirmDialogProvider>
-        </SidebarProvider>
+                        </Router>
+                    </NotificationProvider>
+                </ConfirmDialogProvider>
+            </SidebarProvider>
+        </ThemeProvider>
     );
 }
 

@@ -57,7 +57,10 @@ class Settings(Base):
     cron_24hr_report = Column(String, default="0 2 * * *") # Daily at 02:00 UTC
     cron_7day_report = Column(String, default="0 3 * * 1") # Mondays at 03:00 UTC
     cron_monthly_report = Column(String, default="0 4 1 * *") # 1st of each month at 04:00 UTC
-    
+
+    # Polling settings
+    polling_interval = Column(Integer, default=30) # Dashboard polling interval in seconds (default: 30s)
+
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
 class Report(Base):
@@ -94,3 +97,48 @@ class ServerSnapshot(Base):
     data = Column(JSONB, default={}) # Comprehensive snapshot data
 
     server_profile = relationship("ServerProfile", backref="snapshots")
+
+class ThresholdRule(Base):
+    __tablename__ = "threshold_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey('server_profiles.id'), index=True, nullable=True) # null = all servers
+    name = Column(String, index=True) # e.g., "High CPU Usage"
+    metric = Column(String, index=True) # e.g., "cpu_percent", "memory_percent", "disk_percent"
+    condition = Column(String) # e.g., "greater_than", "less_than"
+    threshold_value = Column(Integer) # e.g., 90 for 90%
+    severity = Column(String, default="warning") # "info", "warning", "critical"
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    server_profile = relationship("ServerProfile", backref="threshold_rules")
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_id = Column(Integer, ForeignKey('threshold_rules.id'), index=True)
+    server_id = Column(Integer, ForeignKey('server_profiles.id'), index=True)
+    severity = Column(String, index=True) # "info", "warning", "critical"
+    message = Column(Text)
+    metric_value = Column(Integer) # Actual value that triggered the alert
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    acknowledged = Column(Boolean, default=False)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    resolved = Column(Boolean, default=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    threshold_rule = relationship("ThresholdRule", backref="alerts")
+    server_profile = relationship("ServerProfile", backref="alerts")
+
+class AlertChannel(Base):
+    __tablename__ = "alert_channels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True) # e.g., "SMTP", "Telegram", "ntfy"
+    channel_type = Column(String, index=True) # "smtp", "telegram", "ntfy", "discord", "slack", "pushover"
+    enabled = Column(Boolean, default=False)
+    config = Column(JSONB, default={}) # Channel-specific configuration
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 import app.models as models
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins
+from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins, thresholds, alerts
 from app.database import engine, Base, get_db
 from app.services import report_generation
 from app.services.snapshot_service import SnapshotService
 from app.services.ssh import SSHService # Added for SSH debugging
+from app.services.threshold_monitor import ThresholdMonitor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
 import logging
@@ -20,7 +21,7 @@ print("Python sys.path:", sys.path, flush=True)
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Homelab Intelligence Hub")
+app = FastAPI(title="Homelab Intelligence")
 
 # Configure CORS
 app.add_middleware(
@@ -78,6 +79,20 @@ async def take_all_server_snapshots():
     finally:
         db.close()
 
+async def check_thresholds():
+    """Check all threshold rules and trigger alerts if needed"""
+    db_gen = get_db()
+    db: Session = next(db_gen)
+    try:
+        print("Running threshold monitoring job...", flush=True)
+        monitor = ThresholdMonitor(db)
+        await monitor.check_all_thresholds()
+        print("Threshold monitoring job completed.", flush=True)
+    except Exception as e:
+        print(f"Error during threshold monitoring: {e}", flush=True)
+    finally:
+        db.close()
+
 # Include Routers
 app.include_router(profiles.router)
 app.include_router(system.router)
@@ -87,6 +102,8 @@ app.include_router(reports.router)
 app.include_router(knowledge.router)
 app.include_router(terminal.router)
 app.include_router(plugins.router)
+app.include_router(thresholds.router)
+app.include_router(alerts.router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -143,6 +160,14 @@ async def startup_event():
             'cron',
             minute='*/30', # Every 30 minutes
             id='server_snapshots'
+        )
+
+        # Schedule threshold monitoring (every 1 minute)
+        scheduler.add_job(
+            check_thresholds,
+            'cron',
+            minute='*', # Every minute
+            id='threshold_monitoring'
         )
 
         scheduler.start()

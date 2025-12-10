@@ -1,12 +1,38 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Server, Bot, Menu, X, Settings, FileText, Brain, Network, HardDrive, Clock, Plug } from 'lucide-react';
+import { LayoutDashboard, Server, Bot, Menu, X, Settings, FileText, Brain, Network, HardDrive, Clock, Plug, AlertTriangle, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useSidebar } from '@/contexts/SidebarContext';
+import ThemeToggle from '@/components/ThemeToggle';
+import { useState, useEffect } from 'react';
+import api from '@/api/client';
 
 export default function Layout() {
     const { isSidebarOpen, toggleSidebar } = useSidebar();
     const location = useLocation();
+    const [alertStats, setAlertStats] = useState({ critical: 0, warning: 0, info: 0 });
+
+    useEffect(() => {
+        fetchAlertStats();
+        const interval = setInterval(fetchAlertStats, 30000); // Refresh every 30 seconds
+        return () => clearInterval(interval);
+    }, []);
+
+    const fetchAlertStats = async () => {
+        try {
+            const res = await api.get('/alerts/stats');
+            setAlertStats(res.data);
+        } catch (error) {
+            console.error('Failed to fetch alert stats', error);
+        }
+    };
+
+    const getAlertColor = () => {
+        if (alertStats.critical > 0) return 'text-red-500';
+        if (alertStats.warning > 0) return 'text-yellow-500';
+        if (alertStats.info > 0) return 'text-blue-500';
+        return 'text-green-500';
+    };
 
     const navItems = [
         { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -17,6 +43,8 @@ export default function Layout() {
         { icon: Bot, label: 'Intelligence', path: '/ai' },
         { icon: FileText, label: 'Reports', path: '/reports' },
         { icon: Brain, label: 'Knowledge', path: '/knowledge' },
+        { icon: AlertTriangle, label: 'Thresholds', path: '/thresholds' },
+        { icon: Bell, label: 'Alerts', path: '/alerts', dynamicColor: getAlertColor() },
         { icon: Clock, label: 'Automations', path: '/automations' },
         { icon: Settings, label: 'Settings', path: '/settings' },
     ];
@@ -30,18 +58,23 @@ export default function Layout() {
                 className="bg-card border-r border-border hidden md:flex flex-col relative z-20"
             >
                 <div className="p-4 flex items-center justify-between h-16 border-b border-border">
-                    <span className={cn("font-bold text-xl truncate", !isSidebarOpen && "hidden")}>
-                        HomelabAI
-                    </span>
-                    <button onClick={toggleSidebar} className="p-1 hover:bg-muted rounded" title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}>
-                        {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-                    </button>
+                    <div className={cn("font-bold text-lg leading-tight", !isSidebarOpen && "hidden")}>
+                        <div>Homelab</div>
+                        <div>Intelligence</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {isSidebarOpen && <ThemeToggle />}
+                        <button onClick={toggleSidebar} className="p-1 hover:bg-muted rounded" title={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}>
+                            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                        </button>
+                    </div>
                 </div>
 
                 <nav className="flex-1 p-2 space-y-2 mt-4">
                     {navItems.map((item) => {
                         const Icon = item.icon;
                         const isActive = location.pathname === item.path;
+                        const hasDynamicColor = item.dynamicColor;
 
                         return (
                             <Link
@@ -54,8 +87,8 @@ export default function Layout() {
                                         : "hover:bg-muted text-muted-foreground hover:text-foreground"
                                 )}
                             >
-                                <Icon size={20} />
-                                {isSidebarOpen && <span>{item.label}</span>}
+                                <Icon size={20} className={!isActive && hasDynamicColor ? hasDynamicColor : ''} />
+                                {isSidebarOpen && <span className={!isActive && hasDynamicColor ? hasDynamicColor : ''}>{item.label}</span>}
                             </Link>
                         );
                     })}
@@ -64,8 +97,12 @@ export default function Layout() {
 
             {/* Main Content */}
             <main className="flex-1 overflow-auto relative z-10">
-                <header className="h-16 border-b border-border flex items-center px-6 bg-card/50 backdrop-blur sticky top-0 md:hidden">
-                    <span className="font-bold text-lg">HomelabAI</span>
+                <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-card/50 backdrop-blur sticky top-0 md:hidden">
+                    <div className="font-bold text-base leading-tight">
+                        <div>Homelab</div>
+                        <div>Intelligence</div>
+                    </div>
+                    <ThemeToggle />
                 </header>
                 <div className="p-6 max-w-7xl mx-auto">
                     <Outlet />
