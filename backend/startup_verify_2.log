@@ -1,0 +1,11 @@
+INFO:     Started server process [77552]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Attempting Primary: ollama
+Primary failed (Ollama Error: [Errno 8] nodename nor servname provided, or not known), attempting Fallback: ollama
+INFO:     127.0.0.1:52845 - "POST /ai/chat HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [77552]
