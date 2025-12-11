@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { Save, Shield, Cpu, CircuitBoard, Brain } from 'lucide-react';
+import { Save, Shield, Cpu, CircuitBoard, Brain, Bell, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '@/api/client';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,25 @@ interface SettingsData {
     primary_provider: string;
     fallback_provider: string;
     system_prompt?: string; // Make system_prompt optional
+    alert_sound_enabled: boolean; // New: Enable sound notifications for critical alerts
+    push_notifications_enabled: boolean; // New: Enable browser push notifications
+    maintenance_mode_until: string | null; // New: Time until maintenance mode is active
+}
+
+// Utility function to convert VAPID public key to Uint8Array
+function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
 }
 
 export default function Settings() {
@@ -30,10 +49,41 @@ export default function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const { showNotification } = useNotification();
+    const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+    const [isSubscribed, setIsSubscribed] = useState(false);
 
     useEffect(() => {
         fetchSettings();
+        checkPushSubscription();
+        // Fetch VAPID public key
+        api.get('/push/vapid-public-key').then(res => {
+            setVapidPublicKey(res.data.publicKey);
+        }).catch(error => {
+            console.error("Failed to fetch VAPID public key", error);
+            showNotification("Failed to load push notification settings.", "error");
+        });
+
+        if ('Notification' in window) {
+            setNotificationPermission(Notification.permission);
+        }
     }, []);
+
+    const checkPushSubscription = async () => {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            setIsSubscribed(false);
+            return;
+        }
+
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            setIsSubscribed(!!subscription);
+        } catch (error) {
+            console.error("Error checking push subscription:", error);
+            setIsSubscribed(false);
+        }
+    };
 
     const fetchSettings = async () => {
         try {
@@ -48,6 +98,10 @@ export default function Settings() {
                 if (fetchedSettings.providers[providerName]) {
                     fetchedSettings.providers[providerName].models = availableModels[providerName];
                 }
+            }
+            // Ensure push_notifications_enabled is always present, default to false
+            if (fetchedSettings.push_notifications_enabled === undefined) {
+                fetchedSettings.push_notifications_enabled = false;
             }
             setSettings(fetchedSettings);
             setLoading(false);
@@ -88,6 +142,118 @@ export default function Settings() {
     const updateSetting = (field: string, value: any) => {
         if (!settings) return;
         setSettings({ ...settings, [field]: value });
+    };
+
+    const handlePushNotificationToggle = async (enabled: boolean) => {
+        if (!settings) return;
+
+        if (enabled) {
+            // Enable push notifications
+            if (notificationPermission === 'denied') {
+                showNotification("Notification permission denied. Please enable it in browser settings.", "error");
+                return;
+            }
+            if (!vapidPublicKey) {
+                showNotification("VAPID public key not loaded. Cannot subscribe to push notifications.", "error");
+                return;
+            }
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                showNotification("Push notifications not supported by your browser.", "error");
+                return;
+            }
+
+            try {
+                const permissionResult = await Notification.requestPermission();
+                setNotificationPermission(permissionResult);
+
+                if (permissionResult === 'granted') {
+                    const registration = await navigator.serviceWorker.ready;
+                    const subscribeOptions = {
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey!)
+                    };
+                    const subscription = await registration.pushManager.subscribe(subscribeOptions);
+                    
+                    // Send subscription to backend
+                    await api.post('/push/subscribe', {
+                        endpoint: subscription.endpoint,
+                        p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')) as any)),
+                        auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')) as any))
+                    });
+                    setSettings({ ...settings, push_notifications_enabled: true });
+                    setIsSubscribed(true);
+                    showNotification("Push notifications enabled!", "success");
+                } else {
+                    setSettings({ ...settings, push_notifications_enabled: false });
+                    setIsSubscribed(false);
+                    showNotification("Notification permission denied.", "error");
+                }
+            } catch (error) {
+                console.error("Error enabling push notifications:", error);
+                showNotification("Failed to enable push notifications.", "error");
+                setSettings({ ...settings, push_notifications_enabled: false });
+                setIsSubscribed(false);
+            }
+        } else {
+            // Disable push notifications
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                showNotification("Push notifications not supported by your browser.", "error");
+                return;
+            }
+
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.getSubscription();
+
+                if (subscription) {
+                    await subscription.unsubscribe();
+                    // Also tell backend to remove subscription
+                    await api.post('/push/unsubscribe', {
+                        endpoint: subscription.endpoint,
+                        p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')) as any)),
+                        auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')) as any))
+                    });
+                    setSettings({ ...settings, push_notifications_enabled: false });
+                    setIsSubscribed(false);
+                    showNotification("Push notifications disabled.", "info");
+                } else {
+                    setSettings({ ...settings, push_notifications_enabled: false });
+                    setIsSubscribed(false);
+                    showNotification("You are not subscribed to push notifications.", "info");
+                }
+            } catch (error) {
+                console.error("Error disabling push notifications:", error);
+                showNotification("Failed to disable push notifications.", "error");
+                setSettings({ ...settings, push_notifications_enabled: true });
+            }
+        }
+    };
+
+    const handleMaintenanceModeToggle = async (enabled: boolean) => {
+        if (!settings) return;
+
+        try {
+            let newMaintenanceModeUntil: string | null = null;
+            if (enabled) {
+                // Set for 1 hour initially, user can extend later
+                const now = new Date();
+                now.setHours(now.getHours() + 1);
+                newMaintenanceModeUntil = now.toISOString();
+                showNotification("Maintenance mode enabled for 1 hour.", "info");
+            } else {
+                showNotification("Maintenance mode disabled.", "info");
+            }
+            
+            const updatedSettings = {
+                ...settings,
+                maintenance_mode_until: newMaintenanceModeUntil,
+            };
+            await api.put('/settings/', updatedSettings);
+            setSettings(updatedSettings);
+        } catch (error) {
+            console.error("Failed to toggle maintenance mode:", error);
+            showNotification("Failed to toggle maintenance mode.", "error");
+        }
     };
 
     if (loading) return <div className="p-8">Loading settings...</div>;
@@ -189,6 +355,92 @@ export default function Settings() {
                         <p className="text-xs text-muted-foreground mt-1">
                             The core instructions for your Agent. It will also receive Server Profiles and Knowledge Base items dynamically.
                         </p>
+                    </div>
+                </motion.div>
+
+                {/* Alert Sound Settings */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    className="md:col-span-2 bg-card border border-border p-6 rounded-xl space-y-4"
+                >
+                    <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+                        <Bell className="text-primary" />
+                        <h2 className="text-xl font-semibold">Alert Notifications</h2>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <label htmlFor="alertSoundToggle" className="block text-sm font-medium">Enable Alert Sounds</label>
+                            <p className="text-xs text-muted-foreground">Play a sound for critical alerts.</p>
+                        </div>
+                        <input
+                            type="checkbox"
+                            id="alertSoundToggle"
+                            checked={settings.alert_sound_enabled}
+                            onChange={(e) => updateSetting('alert_sound_enabled', e.target.checked)}
+                            className="h-4 w-4 accent-primary"
+                        />
+                    </div>
+                </motion.div>
+
+                {/* Maintenance Mode Settings */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    className="md:col-span-2 bg-card border border-border p-6 rounded-xl space-y-4"
+                >
+                    <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+                        <Clock className="text-primary" />
+                        <h2 className="text-xl font-semibold">Maintenance Mode</h2>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <label htmlFor="maintenanceModeToggle" className="block text-sm font-medium">Enable Maintenance Mode</label>
+                            <p className="text-xs text-muted-foreground">Suppresses all new alerts during maintenance window.</p>
+                        </div>
+                        <input
+                            type="checkbox"
+                            id="maintenanceModeToggle"
+                            checked={!!settings.maintenance_mode_until}
+                            onChange={(e) => handleMaintenanceModeToggle(e.target.checked)}
+                            className="h-4 w-4 accent-primary"
+                        />
+                    </div>
+                    {settings.maintenance_mode_until && (
+                        <div className="text-sm text-muted-foreground mt-2">
+                            Active until: {new Date(settings.maintenance_mode_until).toLocaleString()}
+                        </div>
+                    )}
+                </motion.div>
+
+                {/* Browser Push Notifications */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    className="md:col-span-2 bg-card border border-border p-6 rounded-xl space-y-4"
+                >
+                    <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
+                        <Bell className="text-primary" />
+                        <h2 className="text-xl font-semibold">Browser Push Notifications</h2>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label htmlFor="pushNotificationToggle" className="block text-sm font-medium">Enable Push Notifications</label>
+                                <p className="text-xs text-muted-foreground">Receive desktop notifications even when the tab is in the background.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                id="pushNotificationToggle"
+                                checked={settings.push_notifications_enabled}
+                                onChange={(e) => handlePushNotificationToggle(e.target.checked)}
+                                className="h-4 w-4 accent-primary"
+                                disabled={notificationPermission === 'denied' || !vapidPublicKey}
+                            />
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                            Current permission status: <span className="font-semibold capitalize">{notificationPermission}</span>
+                            {(notificationPermission === 'denied') && (
+                                <p className="text-red-500 text-xs mt-1">Please enable notifications in your browser settings to receive push alerts.</p>
+                            )}
+                        </div>
                     </div>
                 </motion.div>
 

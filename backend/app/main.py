@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import app.models as models
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins, thresholds, alerts
+from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins, thresholds, alerts, push
 from app.database import engine, Base, get_db
 from app.services import report_generation
 from app.services.snapshot_service import SnapshotService
@@ -104,6 +104,7 @@ app.include_router(terminal.router)
 app.include_router(plugins.router)
 app.include_router(thresholds.router)
 app.include_router(alerts.router)
+app.include_router(push.router)
 
 @app.on_event("startup")
 async def startup_event():

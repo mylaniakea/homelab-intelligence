@@ -45,6 +45,18 @@ def update_threshold_rule(rule_id: int, rule: ThresholdRuleUpdate, db: Session =
     db.refresh(db_rule)
     return db_rule
 
+@router.post("/{rule_id}/mute", response_model=ThresholdRule)
+def mute_threshold_rule(rule_id: int, mute_duration_minutes: int, db: Session = Depends(get_db)):
+    """Mute a threshold rule for a specified duration in minutes"""
+    db_rule = db.query(models.ThresholdRule).filter(models.ThresholdRule.id == rule_id).first()
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Threshold rule not found")
+
+    db_rule.muted_until = datetime.now() + timedelta(minutes=mute_duration_minutes)
+    db.commit()
+    db.refresh(db_rule)
+    return db_rule
+
 @router.delete("/{rule_id}")
 def delete_threshold_rule(rule_id: int, db: Session = Depends(get_db)):
     """Delete a threshold rule"""

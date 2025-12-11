@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
-from typing import List
-from datetime import datetime
+from typing import List, Optional
+from datetime import datetime, timedelta
 from app.database import get_db
 from app import models
-from app.schemas_alerts import Alert, AlertUpdate, AlertChannel, AlertChannelCreate, AlertChannelUpdate
+from app.schemas_alerts import Alert, AlertUpdate, AlertChannel, AlertChannelCreate, AlertChannelUpdate, NotificationLogResponse
 from app.services.alert_channels import get_all_channels
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -95,6 +95,18 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
     db.refresh(db_alert)
     return db_alert
 
+@router.post("/{alert_id}/snooze", response_model=Alert)
+def snooze_alert(alert_id: int, snooze_duration_minutes: int, db: Session = Depends(get_db)):
+    """Snooze an alert for a specified duration in minutes"""
+    db_alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+    if not db_alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    db_alert.snoozed_until = datetime.now() + timedelta(minutes=snooze_duration_minutes)
+    db.commit()
+    db.refresh(db_alert)
+    return db_alert
+
 @router.delete("/{alert_id}")
 def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     """Delete an alert"""
@@ -105,6 +117,46 @@ def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     db.delete(db_alert)
     db.commit()
     return {"message": "Alert deleted successfully"}
+
+@router.post("/acknowledge-all", response_model=List[Alert])
+def bulk_acknowledge_alerts(alert_ids: List[int] = [], db: Session = Depends(get_db)):
+    """Acknowledge multiple alerts. If alert_ids is empty, acknowledges all unresolved alerts."""
+    query = db.query(models.Alert).filter(models.Alert.resolved == False)
+    if alert_ids:
+        query = query.filter(models.Alert.id.in_(alert_ids))
+    
+    alerts_to_update = query.all()
+    if not alerts_to_update:
+        raise HTTPException(status_code=404, detail="No alerts found to acknowledge")
+
+    for alert in alerts_to_update:
+        alert.acknowledged = True
+        alert.acknowledged_at = datetime.now()
+    
+    db.commit()
+    for alert in alerts_to_update:
+        db.refresh(alert)
+    return alerts_to_update
+
+@router.post("/resolve-all", response_model=List[Alert])
+def bulk_resolve_alerts(alert_ids: List[int] = [], db: Session = Depends(get_db)):
+    """Resolve multiple alerts. If alert_ids is empty, resolves all unresolved alerts."""
+    query = db.query(models.Alert).filter(models.Alert.resolved == False)
+    if alert_ids:
+        query = query.filter(models.Alert.id.in_(alert_ids))
+    
+    alerts_to_update = query.all()
+    if not alerts_to_update:
+        raise HTTPException(status_code=404, detail="No alerts found to resolve")
+
+    for alert in alerts_to_update:
+        alert.resolved = True
+        alert.resolved_at = datetime.now()
+    
+    db.commit()
+    for alert in alerts_to_update:
+        db.refresh(alert)
+    return alerts_to_update
 
 # Alert Channels endpoints
 @router.get("/channels/available")
@@ -121,7 +173,13 @@ def get_alert_channels(db: Session = Depends(get_db)):
 @router.post("/channels/", response_model=AlertChannel)
 def create_alert_channel(channel: AlertChannelCreate, db: Session = Depends(get_db)):
     """Create a new alert channel"""
-    db_channel = models.AlertChannel(**channel.model_dump())
+    db_channel = models.AlertChannel(
+        name=channel.name,
+        channel_type=channel.channel_type,
+        enabled=channel.enabled,
+        config=channel.config,
+        template=channel.template # Include the new template field
+    )
     db.add(db_channel)
     db.commit()
     db.refresh(db_channel)
@@ -156,6 +214,24 @@ def delete_alert_channel(channel_id: int, db: Session = Depends(get_db)):
     db.delete(db_channel)
     db.commit()
     return {"message": "Alert channel deleted successfully"}
+
+@router.get("/notification-logs", response_model=List[NotificationLogResponse])
+def get_notification_logs(
+    alert_id: Optional[int] = None,
+    channel_id: Optional[int] = None,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """Get notification logs with optional filtering by alert_id or channel_id"""
+    query = db.query(models.NotificationLog).order_by(models.NotificationLog.timestamp.desc())
+
+    if alert_id:
+        query = query.filter(models.NotificationLog.alert_id == alert_id)
+    if channel_id:
+        query = query.filter(models.NotificationLog.channel_id == channel_id)
+
+    logs = query.limit(limit).all()
+    return logs
 
 @router.post("/channels/{channel_id}/test")
 def test_alert_channel(channel_id: int, db: Session = Depends(get_db)):

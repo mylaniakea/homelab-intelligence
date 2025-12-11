@@ -68,6 +68,63 @@ class SnapshotService:
                     used_mem = int(parts[2]) if parts[2].isdigit() else 0
                     available_mem = int(parts[6]) if parts[6].isdigit() else 0
 
+            # Gather Swap info
+            swap_info_raw, _, _ = await ssh_service.execute_command("free -b | grep Swap:")
+            total_swap = 0
+            used_swap = 0
+            swap_percent = 0
+            if swap_info_raw:
+                parts = swap_info_raw.split()
+                if len(parts) >= 4:
+                    total_swap = int(parts[1]) if parts[1].isdigit() else 0
+                    used_swap = int(parts[2]) if parts[2].isdigit() else 0
+                    if total_swap > 0: # Avoid division by zero
+                        swap_percent = (used_swap / total_swap) * 100
+
+            # Gather Load Average (1, 5, 15 min)
+            load_avg_raw, _, _ = await ssh_service.execute_command("cat /proc/loadavg")
+            load_avg_1min = 0.0
+            load_avg_5min = 0.0
+            load_avg_15min = 0.0
+            if load_avg_raw:
+                parts = load_avg_raw.split()
+                if len(parts) >= 3:
+                    try:
+                        load_avg_1min = float(parts[0])
+                        load_avg_5min = float(parts[1])
+                        load_avg_15min = float(parts[2])
+                    except ValueError:
+                        logger.warning(f"Could not parse load average for {server_profile.name}: {load_avg_raw.strip()}")
+
+            # Gather Process Count
+            process_count_raw, _, process_count_code = await ssh_service.execute_command("ps -e --no-headers | wc -l")
+            process_count = 0
+            if process_count_code == 0 and process_count_raw.strip().isdigit():
+                process_count = int(process_count_raw.strip())
+
+            # Gather Open File Descriptors
+            # Output is typically: 1024\t0\t102400 (used, free, max)
+            file_nr_raw, _, file_nr_code = await ssh_service.execute_command("cat /proc/sys/fs/file-nr")
+            open_file_descriptors = 0
+            max_file_descriptors = 0
+            if file_nr_code == 0 and file_nr_raw.strip():
+                parts = file_nr_raw.strip().split() # Split by whitespace
+                if len(parts) >= 3 and parts[0].isdigit() and parts[2].isdigit():
+                    open_file_descriptors = int(parts[0])
+                    max_file_descriptors = int(parts[2])
+
+            # Gather Uptime
+            # Output is typically: 3600.00 123.45 (total_uptime_seconds, idle_time_seconds)
+            uptime_raw, _, uptime_code = await ssh_service.execute_command("cat /proc/uptime")
+            total_uptime_seconds = 0
+            if uptime_code == 0 and uptime_raw.strip():
+                parts = uptime_raw.strip().split()
+                if len(parts) >= 1:
+                    try:
+                        total_uptime_seconds = int(float(parts[0]))
+                    except ValueError:
+                        logger.warning(f"Could not parse uptime for {server_profile.name}: {uptime_raw.strip()}")
+
             # Gather Disk info (simplified, for root fs)
             disk_info_raw, _, _ = await ssh_service.execute_command("df -P -B1 / | tail -n 1")
             total_disk = 0
@@ -115,11 +172,27 @@ class SnapshotService:
                     "total_bytes": total_mem,
                     "used_bytes": used_mem,
                     "available_bytes": available_mem,
+                    "swap_total_bytes": total_swap,
+                    "swap_used_bytes": used_swap,
+                    "swap_percent": swap_percent,
                 },
                 "disk": {
                     "root_total_bytes": total_disk,
                     "root_used_bytes": used_disk,
                 },
+                "load_average": {
+                    "1min": load_avg_1min,
+                    "5min": load_avg_5min,
+                    "15min": load_avg_15min,
+                },
+                "processes": {
+                    "count": process_count,
+                },
+                "file_descriptors": {
+                    "open": open_file_descriptors,
+                    "max": max_file_descriptors,
+                },
+                "uptime_seconds": total_uptime_seconds,
                 "network_interfaces": network_interfaces,
                 "packages": packages_raw.split('\n') if packages_raw else [],
                 "temperatures": temperatures_data,

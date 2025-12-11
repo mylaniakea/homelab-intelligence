@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '@/api/client';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useConfirm } from '@/contexts/ConfirmDialogContext'; // Import useConfirm
 import { Bell, CheckCircle, XCircle, AlertTriangle, Settings, Mail, MessageCircle, Smartphone, Hash, Server, Link } from 'lucide-react';
 
 interface Alert {
@@ -15,6 +16,7 @@ interface Alert {
   acknowledged_at: string | null;
   resolved: boolean;
   resolved_at: string | null;
+  snoozed_until: string | null; // New: Time until alert is snoozed
 }
 
 interface AlertChannel {
@@ -23,6 +25,7 @@ interface AlertChannel {
   channel_type: string;
   enabled: boolean;
   config: Record<string, any>;
+  template: string | null; // New: Customizable message template
 }
 
 interface ChannelDefinition {
@@ -47,6 +50,7 @@ const iconMap: Record<string, any> = {
 
 const Alerts: React.FC = () => {
   const { showNotification } = useNotification();
+  const { showConfirm } = useConfirm(); // Use the confirm dialog hook
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [channels, setChannels] = useState<AlertChannel[]>([]);
   const [availableChannels, setAvailableChannels] = useState<Record<string, ChannelDefinition>>({});
@@ -54,17 +58,60 @@ const Alerts: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'alerts' | 'channels'>('alerts');
   const [editingChannel, setEditingChannel] = useState<AlertChannel | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
+  const [alertSoundEnabled, setAlertSoundEnabled] = useState(false);
+  const [previousAlertIds, setPreviousAlertIds] = useState<Set<number>>(new Set());
+  const [showSnoozeDropdownForAlert, setShowSnoozeDropdownForAlert] = useState<number | null>(null); // New state for snooze dropdown
+
+  const criticalSound = typeof Audio !== 'undefined' ? new Audio('https://raw.githubusercontent.com/schmic/sample-data/main/alarm.mp3') : null;
 
   useEffect(() => {
+    fetchSettings();
     fetchAlerts();
     fetchChannels();
     fetchAvailableChannels();
+
+    const interval = setInterval(fetchAlerts, 10000); // Poll for new alerts every 10 seconds
+
+    const handleDocumentClick = () => {
+      setShowSnoozeDropdownForAlert(null);
+    };
+    document.addEventListener('click', handleDocumentClick);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('click', handleDocumentClick);
+    };
   }, []);
+
+  useEffect(() => {
+    if (alertSoundEnabled) {
+      const newCriticalAlerts = alerts.filter(alert => 
+        alert.severity === 'critical' && !previousAlertIds.has(alert.id)
+      );
+
+      if (newCriticalAlerts.length > 0) {
+        criticalSound?.play().catch(e => console.error("Error playing sound:", e));
+      }
+    }
+    setPreviousAlertIds(new Set(alerts.map(alert => alert.id)));
+  }, [alerts, alertSoundEnabled]);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/settings/');
+      setAlertSoundEnabled(res.data.alert_sound_enabled);
+    } catch (error) {
+      console.error('Failed to fetch settings', error);
+    }
+  };
 
   const fetchAlerts = async () => {
     try {
       const res = await api.get('/alerts/?limit=100');
       setAlerts(res.data);
+
+      // No need to set previousAlertIds here, it's handled by the useEffect for sound playback
+      // setPreviousAlertIds(new Set(res.data.map((alert: Alert) => alert.id)));
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch alerts', error);
@@ -113,6 +160,51 @@ const Alerts: React.FC = () => {
     }
   };
 
+  const handleSnoozeAlert = async (alertId: number, duration: number) => {
+    try {
+      await api.post(`/alerts/${alertId}/snooze?snooze_duration_minutes=${duration}`);
+      showNotification(`Alert snoozed for ${duration} minutes.`, 'success');
+      fetchAlerts();
+    } catch (error) {
+      console.error('Failed to snooze alert', error);
+      showNotification('Failed to snooze alert.', 'error');
+    }
+  };
+
+  const handleAcknowledgeAll = async () => {
+    const confirmed = await showConfirm({
+      title: "Acknowledge All Alerts",
+      message: `Are you sure you want to acknowledge all ${unresolvedAlerts.length} active alerts?`,
+    });
+    if (confirmed) {
+      try {
+        await api.post('/alerts/acknowledge-all');
+        showNotification('All active alerts acknowledged.', 'success');
+        fetchAlerts();
+      } catch (error) {
+        console.error('Failed to acknowledge all alerts', error);
+        showNotification('Failed to acknowledge all alerts.', 'error');
+      }
+    }
+  };
+
+  const handleResolveAll = async () => {
+    const confirmed = await showConfirm({
+      title: "Resolve All Alerts",
+      message: `Are you sure you want to resolve all ${unresolvedAlerts.length} active alerts? This cannot be undone.`,
+    });
+    if (confirmed) {
+      try {
+        await api.post('/alerts/resolve-all');
+        showNotification('All active alerts resolved.', 'success');
+        fetchAlerts();
+      } catch (error) {
+        console.error('Failed to resolve all alerts', error);
+        showNotification('Failed to resolve all alerts.', 'error');
+      }
+    }
+  };
+
   const handleConfigureChannel = (channelType: string) => {
     const channelDef = availableChannels[channelType];
     const existingChannel = channels.find(c => c.channel_type === channelType);
@@ -125,9 +217,24 @@ const Alerts: React.FC = () => {
         channel_type: channelType,
         enabled: false,
         config: {},
+        template: null, // Initialize template as null
       });
     }
     setIsConfiguring(true);
+  };
+
+  const getPreviewMessage = (template: string | null, alert: Alert | null) => {
+    if (!template) return "No custom template. Default message will be used.";
+    if (!alert) return "No alert data available for preview. Please trigger an alert first.";
+
+    let preview = template;
+    preview = preview.replace(/{server_name}/g, alert.server_id ? `Server-${alert.server_id}` : "Unknown Server");
+    preview = preview.replace(/{message}/g, alert.message);
+    preview = preview.replace(/{severity}/g, alert.severity.toUpperCase());
+    preview = preview.replace(/{metric_value}/g, alert.metric_value.toString());
+    preview = preview.replace(/{triggered_at}/g, new Date(alert.triggered_at).toLocaleString());
+    // Add more replacements as needed based on alert_data structure
+    return preview;
   };
 
   const handleSaveChannel = async () => {
@@ -138,6 +245,7 @@ const Alerts: React.FC = () => {
         await api.put(`/alerts/channels/${editingChannel.id}`, {
           enabled: editingChannel.enabled,
           config: editingChannel.config,
+          template: editingChannel.template, // Include template here
         });
         showNotification('Channel updated successfully!', 'success');
       } else {
@@ -232,6 +340,26 @@ const Alerts: React.FC = () => {
         </button>
       </div>
 
+      {/* Bulk Action Buttons */}
+      {activeTab === 'alerts' && unresolvedAlerts.length > 0 && (
+        <div className="flex justify-end gap-3">
+          {!unresolvedAlerts.every(a => a.acknowledged) && (
+            <button
+              onClick={handleAcknowledgeAll}
+              className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium"
+            >
+              Acknowledge All ({unresolvedAlerts.filter(a => !a.acknowledged).length})
+            </button>
+          )}
+          <button
+            onClick={handleResolveAll}
+            className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 text-sm font-medium"
+          >
+            Resolve All ({unresolvedAlerts.length})
+          </button>
+        </div>
+      )}
+
       {/* Alerts Tab */}
       {activeTab === 'alerts' && (
         <div className="space-y-4">
@@ -257,15 +385,45 @@ const Alerts: React.FC = () => {
                     </div>
                     <p className="text-lg font-medium mb-1">{alert.message}</p>
                     <p className="text-sm text-muted-foreground">Value: {alert.metric_value}</p>
+                    {alert.snoozed_until && new Date(alert.snoozed_until) > new Date() && (
+                      <p className="text-xs text-blue-500 mt-1">Snoozed until: {new Date(alert.snoozed_until).toLocaleString()}</p>
+                    )}
                   </div>
                   <div className="flex gap-2">
-                    {!alert.acknowledged && (
+                    {alert.snoozed_until && new Date(alert.snoozed_until) > new Date() ? (
                       <button
-                        onClick={() => handleAcknowledge(alert.id)}
-                        className="px-3 py-1 rounded-md bg-blue-500 text-white hover:bg-blue-600 text-sm"
+                        onClick={() => handleSnoozeAlert(alert.id, 0)} // Pass 0 to unsnooze immediately
+                        className="px-3 py-1 rounded-md bg-orange-500 text-white hover:bg-orange-600 text-sm"
                       >
-                        Acknowledge
+                        Unsnooze
                       </button>
+                    ) : (
+                      <>
+                        {!alert.acknowledged && (
+                          <button
+                            onClick={() => handleAcknowledge(alert.id)}
+                            className="px-3 py-1 rounded-md bg-blue-500 text-white hover:bg-blue-600 text-sm"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowSnoozeDropdownForAlert(alert.id); }}
+                            className="px-3 py-1 rounded-md bg-yellow-500 text-white hover:bg-yellow-600 text-sm"
+                          >
+                            Snooze
+                          </button>
+                          {showSnoozeDropdownForAlert === alert.id && (
+                            <div className="absolute right-0 mt-2 w-40 bg-card border border-border rounded-md shadow-lg z-10">
+                              <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => { handleSnoozeAlert(alert.id, 5); setShowSnoozeDropdownForAlert(null); }}>5 Minutes</button>
+                              <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => { handleSnoozeAlert(alert.id, 30); setShowSnoozeDropdownForAlert(null); }}>30 Minutes</button>
+                              <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => { handleSnoozeAlert(alert.id, 60); setShowSnoozeDropdownForAlert(null); }}>1 Hour</button>
+                              <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => { handleSnoozeAlert(alert.id, 1440); setShowSnoozeDropdownForAlert(null); }}>24 Hours</button>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                     <button
                       onClick={() => handleResolve(alert.id)}
@@ -331,6 +489,30 @@ const Alerts: React.FC = () => {
                     )}
                   </div>
                 ))}
+
+                {/* Template Field */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">Custom Template (Optional)</label>
+                  <textarea
+                    className="w-full bg-input border border-border rounded-md px-3 py-2 min-h-[100px] font-mono text-sm"
+                    value={editingChannel.template || ''}
+                    onChange={(e) => setEditingChannel({
+                      ...editingChannel,
+                      template: e.target.value
+                    })}
+                    placeholder="Example: {severity} alert on {server_name}: {message}"
+                    rows={4}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Available variables: <code>{`{server_name}, {message}, {severity}, {metric_value}, {triggered_at}`}</code>
+                  </p>
+                  {editingChannel.template && (
+                    <div className="mt-4 p-3 bg-muted rounded-md text-sm">
+                      <p className="font-medium mb-2">Preview:</p>
+                      <p className="whitespace-pre-line">{getPreviewMessage(editingChannel.template, unresolvedAlerts[0] || null)}</p>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button

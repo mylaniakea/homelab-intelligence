@@ -12,6 +12,7 @@ interface ThresholdRule {
   threshold_value: number;
   severity: string;
   enabled: boolean;
+  muted_until: string | null; // New: Time until rule is muted
 }
 
 interface ServerProfile {
@@ -129,6 +130,17 @@ const Thresholds: React.FC = () => {
     } catch (error) {
       console.error('Failed to toggle threshold rule', error);
       showNotification('Failed to toggle threshold rule.', 'error');
+    }
+  };
+
+  const handleMuteRule = async (ruleId: number, duration: number) => {
+    try {
+      await api.post(`/thresholds/${ruleId}/mute?mute_duration_minutes=${duration}`);
+      showNotification(`Rule muted for ${duration} minutes.`, 'success');
+      fetchRules();
+    } catch (error) {
+      console.error('Failed to mute rule', error);
+      showNotification('Failed to mute rule.', 'error');
     }
   };
 
@@ -261,6 +273,11 @@ const Thresholds: React.FC = () => {
                   <span className={`text-xs px-2 py-1 rounded ${rule.enabled ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'}`}>
                     {rule.enabled ? 'Enabled' : 'Disabled'}
                   </span>
+                  {rule.muted_until && new Date(rule.muted_until) > new Date() && (
+                    <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-500">
+                      Muted until: {new Date(rule.muted_until).toLocaleString()}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {metricOptions.find(m => m.value === rule.metric)?.label} {conditionOptions.find(c => c.value === rule.condition)?.label.toLowerCase()} {rule.threshold_value}
@@ -268,6 +285,30 @@ const Thresholds: React.FC = () => {
                 </p>
               </div>
               <div className="flex gap-2">
+                {rule.muted_until && new Date(rule.muted_until) > new Date() ? (
+                  <button
+                    onClick={() => handleMuteRule(rule.id!, 0)} // Pass 0 to unmute immediately
+                    className="px-3 py-1 rounded-md bg-orange-600 text-white hover:bg-orange-700 text-sm"
+                  >
+                    Unmute
+                  </button>
+                ) : (
+                  <div className="relative">
+                    <button
+                      onClick={() => { /* Toggle mute dropdown */ }}
+                      className="px-3 py-1 rounded-md bg-yellow-500 text-white hover:bg-yellow-600 text-sm"
+                    >
+                      Mute
+                    </button>
+                    {/* Mute Dropdown Placeholder */}
+                    {/* This will be replaced with a proper dropdown component */}
+                    <div className="absolute right-0 mt-2 w-40 bg-card border border-border rounded-md shadow-lg hidden">
+                      <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => handleMuteRule(rule.id!, 30)}>30 Minutes</button>
+                      <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => handleMuteRule(rule.id!, 60)}>1 Hour</button>
+                      <button className="block w-full text-left px-4 py-2 text-sm hover:bg-muted" onClick={() => handleMuteRule(rule.id!, 1440)}>24 Hours</button>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => handleToggleEnabled(rule)}
                   className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 text-sm"

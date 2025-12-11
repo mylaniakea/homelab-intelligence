@@ -22,6 +22,7 @@ class ThresholdRuleUpdate(BaseModel):
     threshold_value: Optional[int] = None
     severity: Optional[str] = None
     enabled: Optional[bool] = None
+    muted_until: Optional[datetime] = None # New: Time until rule is muted
 
 class ThresholdRule(ThresholdRuleBase):
     id: int
@@ -45,6 +46,7 @@ class AlertCreate(AlertBase):
 class AlertUpdate(BaseModel):
     acknowledged: Optional[bool] = None
     resolved: Optional[bool] = None
+    snoozed_until: Optional[datetime] = None # New: Time until alert is snoozed or None to clear
 
 class Alert(AlertBase):
     id: int
@@ -53,6 +55,7 @@ class Alert(AlertBase):
     acknowledged_at: Optional[datetime] = None
     resolved: bool
     resolved_at: Optional[datetime] = None
+    snoozed_until: Optional[datetime] = None # New: Time until alert is snoozed
 
     class Config:
         from_attributes = True
@@ -63,6 +66,7 @@ class AlertChannelBase(BaseModel):
     channel_type: str
     enabled: bool = False
     config: Dict[str, Any] = {}
+    template: Optional[str] = None # New: Customizable message template
 
 class AlertChannelCreate(AlertChannelBase):
     pass
@@ -70,11 +74,26 @@ class AlertChannelCreate(AlertChannelBase):
 class AlertChannelUpdate(BaseModel):
     enabled: Optional[bool] = None
     config: Optional[Dict[str, Any]] = None
+    template: Optional[str] = None # New: Customizable message template
 
 class AlertChannel(AlertChannelBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Notification Log Schemas
+class NotificationLogBase(BaseModel):
+    alert_id: Optional[int] = None
+    channel_id: Optional[int] = None
+    success: bool
+    message: Optional[str] = None
+
+class NotificationLogResponse(NotificationLogBase):
+    id: int
+    timestamp: datetime
 
     class Config:
         from_attributes = True

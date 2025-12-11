@@ -60,6 +60,8 @@ class Settings(Base):
 
     # Polling settings
     polling_interval = Column(Integer, default=30) # Dashboard polling interval in seconds (default: 30s)
+    alert_sound_enabled = Column(Boolean, default=False) # Enable sound notifications for critical alerts
+    maintenance_mode_until = Column(DateTime(timezone=True), nullable=True) # New: Time until maintenance mode is active
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
@@ -109,6 +111,7 @@ class ThresholdRule(Base):
     threshold_value = Column(Integer) # e.g., 90 for 90%
     severity = Column(String, default="warning") # "info", "warning", "critical"
     enabled = Column(Boolean, default=True)
+    muted_until = Column(DateTime(timezone=True), nullable=True) # New: Time until rule is muted
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -128,6 +131,7 @@ class Alert(Base):
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     resolved = Column(Boolean, default=False)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+    snoozed_until = Column(DateTime(timezone=True), nullable=True) # New: Time until alert is snoozed
 
     threshold_rule = relationship("ThresholdRule", backref="alerts")
     server_profile = relationship("ServerProfile", backref="alerts")
@@ -140,5 +144,29 @@ class AlertChannel(Base):
     channel_type = Column(String, index=True) # "smtp", "telegram", "ntfy", "discord", "slack", "pushover"
     enabled = Column(Boolean, default=False)
     config = Column(JSONB, default={}) # Channel-specific configuration
+    template = Column(Text, nullable=True) # New: Customizable message template for the channel
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True) # Optional: Link to a user if authentication is implemented
+    endpoint = Column(String, unique=True, index=True)
+    p256dh = Column(String)
+    auth = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class NotificationLog(Base):
+    __tablename__ = "notification_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(Integer, ForeignKey('alerts.id'), index=True, nullable=True)
+    channel_id = Column(Integer, ForeignKey('alert_channels.id'), index=True, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    success = Column(Boolean)
+    message = Column(Text, nullable=True) # Success or error message
+
+    alert = relationship("Alert", backref="notification_logs")
+    channel = relationship("AlertChannel", backref="notification_logs")

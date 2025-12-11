@@ -36,6 +36,9 @@ def update_settings(settings_in: schemas_settings.SettingsUpdate, db: Session = 
     settings.cron_24hr_report = settings_in.cron_24hr_report
     settings.cron_7day_report = settings_in.cron_7day_report
     settings.cron_monthly_report = settings_in.cron_monthly_report
+    settings.polling_interval = settings_in.polling_interval
+    settings.alert_sound_enabled = settings_in.alert_sound_enabled
+    settings.maintenance_mode_until = settings_in.maintenance_mode_until
     
     db.commit()
     db.refresh(settings)

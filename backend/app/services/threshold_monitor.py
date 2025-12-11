@@ -9,6 +9,7 @@ from typing import Dict, Any
 import logging
 from app import models
 from app.services.notification_service import NotificationService
+from app.services.push_notifications import send_push_notification
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,12 @@ class ThresholdMonitor:
     async def check_all_thresholds(self):
         """Check all enabled threshold rules against current server metrics"""
         logger.info("Starting threshold monitoring check...")
+
+        # Check for maintenance mode
+        settings = self.db.query(models.Settings).first()
+        if settings and settings.maintenance_mode_until and settings.maintenance_mode_until > datetime.now():
+            logger.info(f"Maintenance mode is active until {settings.maintenance_mode_until}. Skipping all threshold checks.")
+            return
 
         # Get all enabled threshold rules
         rules = self.db.query(models.ThresholdRule).filter(
@@ -40,6 +47,9 @@ class ThresholdMonitor:
 
     async def _check_rule(self, rule: models.ThresholdRule):
         """Check a single threshold rule"""
+        if rule.muted_until and rule.muted_until > datetime.now():
+            logger.info(f"Rule {rule.id} ({rule.name}) is muted until {rule.muted_until}, skipping.")
+            return
         # Get servers to check (specific server or all servers)
         if rule.server_id:
             servers = [self.db.query(models.ServerProfile).filter(
@@ -90,6 +100,11 @@ class ThresholdMonitor:
                     models.Alert.rule_id == rule.id,
                     models.Alert.server_id == server.id,
                     models.Alert.resolved == False,
+                    # Only consider non-snoozed alerts for duplication check, or if snooze has expired
+                    and_(
+                        models.Alert.snoozed_until == None,
+                        models.Alert.snoozed_until < datetime.now()
+                    ),
                     models.Alert.triggered_at >= datetime.now() - timedelta(minutes=5)
                 )
             ).first()
@@ -235,15 +250,36 @@ class ThresholdMonitor:
                     'id': channel.id,
                     'name': channel.name,
                     'channel_type': channel.channel_type,
-                    'config': channel.config
+                    'config': channel.config,
+                    'template': channel.template # Pass the template field
                 }
 
-                success = await self.notification_service.send_notification(channel_dict, alert_data)
+                success, message = await self.notification_service.send_notification(self.db, channel_dict, alert_data)
 
                 if success:
-                    logger.info(f"Notification sent via {channel.name} (ID: {channel.id})")
+                    logger.info(f"Notification sent via {channel.name} (ID: {channel.id}): {message}")
                 else:
-                    logger.warning(f"Failed to send notification via {channel.name} (ID: {channel.id})")
+                    logger.warning(f"Failed to send notification via {channel.name} (ID: {channel.id}): {message}")
 
             except Exception as e:
                 logger.error(f"Error sending notification via {channel.name}: {e}")
+        
+        # Send browser push notifications for critical alerts
+        if alert.severity == 'critical':
+            push_subscriptions = self.db.query(models.PushSubscription).all()
+            if push_subscriptions:
+                message_title = f"CRITICAL Alert: {server.name}"
+                message_body = alert.message
+                for sub in push_subscriptions:
+                    try:
+                        subscription_info = {
+                            "endpoint": sub.endpoint,
+                            "keys": {
+                                "p256dh": sub.p256dh,
+                                "auth": sub.auth,
+                            }
+                        }
+                        await send_push_notification(subscription_info, json.dumps({"title": message_title, "body": message_body}))
+                        logger.info(f"Browser push notification sent to {sub.endpoint}")
+                    except Exception as e:
+                        logger.error(f"Error sending browser push notification to {sub.endpoint}: {e}")

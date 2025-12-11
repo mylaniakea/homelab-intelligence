@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { HardDrive, Cpu, Server as ServerIcon, MemoryStick, FileText } from 'lucide-react';
+import { HardDrive, Cpu, Server as ServerIcon, MemoryStick, FileText, Activity, Layers, Clock, Users, Clipboard } from 'lucide-react';
 import api from '@/api/client';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +12,31 @@ interface SystemStats {
     };
     os: { hostname: string; system: string; release: string };
     network: { bytes_sent: number; bytes_recv: number };
+    
+    // New Metrics
+    memory: {
+        total_bytes: number;
+        used_bytes: number;
+        available_bytes: number;
+        swap_total_bytes: number;
+        swap_used_bytes: number;
+        swap_percent: number;
+    };
+    load_average: {
+        '1min': number;
+        '5min': number;
+        '15min': number;
+    };
+    processes: {
+        count: number;
+    };
+    file_descriptors: {
+        open: number;
+        max: number;
+    };
+    uptime_seconds: number;
 }
+
 
 export default function Dashboard() {
     const [stats, setStats] = useState<SystemStats | null>(null);
@@ -74,9 +98,16 @@ export default function Dashboard() {
                 />
                 <StatCard
                     title="Memory"
-                    value={`${stats?.hardware.memory.percent}%`}
-                    subtext={`${(stats?.hardware.memory.used! / 1024 / 1024 / 1024).toFixed(1)} GB / ${(stats?.hardware.memory.total! / 1024 / 1024 / 1024).toFixed(1)} GB`}
+                    value={`${stats?.memory.used_bytes && stats?.memory.total_bytes ? ((stats.memory.used_bytes / stats.memory.total_bytes) * 100).toFixed(1) : 0}%`}
+                    subtext={`${stats?.memory.used_bytes && stats?.memory.total_bytes ? (stats.memory.used_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${(stats?.memory.total_bytes / 1024 / 1024 / 1024).toFixed(1)} GB`}
                     icon={MemoryStick} color="text-green-500"
+                />
+                <StatCard
+                    title="Swap Usage"
+                    value={`${stats?.memory.swap_percent.toFixed(1)}%`}
+                    subtext={`${stats?.memory.swap_used_bytes && stats?.memory.swap_total_bytes ? (stats.memory.swap_used_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${(stats?.memory.swap_total_bytes / 1024 / 1024 / 1024).toFixed(1)} GB`}
+                    icon={Layers}
+                    color="text-teal-500"
                 />
                 <StatCard
                     title="Disk Space"
@@ -84,6 +115,34 @@ export default function Dashboard() {
                     subtext={`${(stats?.hardware.disk.used! / 1024 / 1024 / 1024).toFixed(1)} GB Used`}
                     icon={HardDrive}
                     color="text-orange-500"
+                />
+                <StatCard
+                    title="Load Average (1min)"
+                    value={stats?.load_average['1min'].toFixed(2)}
+                    subtext={`5min: ${stats?.load_average['5min'].toFixed(2)}, 15min: ${stats?.load_average['15min'].toFixed(2)}`}
+                    icon={Activity}
+                    color="text-red-500"
+                />
+                <StatCard
+                    title="Processes"
+                    value={stats?.processes.count}
+                    subtext="Running processes"
+                    icon={Users}
+                    color="text-indigo-500"
+                />
+                <StatCard
+                    title="Open File Descriptors"
+                    value={stats?.file_descriptors.open}
+                    subtext={`Max: ${stats?.file_descriptors.max}`}
+                    icon={Clipboard}
+                    color="text-pink-500"
+                />
+                <StatCard
+                    title="Uptime"
+                    value={`${Math.floor(stats!.uptime_seconds / 3600 / 24)}d ${Math.floor((stats!.uptime_seconds / 3600) % 24)}h ${Math.floor((stats!.uptime_seconds / 60) % 60)}m`}
+                    subtext="Total system uptime"
+                    icon={Clock}
+                    color="text-purple-500"
                 />
                 <StatCard
                     title="OS Info"

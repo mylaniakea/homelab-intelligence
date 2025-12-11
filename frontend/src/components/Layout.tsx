@@ -4,19 +4,41 @@ import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useSidebar } from '@/contexts/SidebarContext';
 import ThemeToggle from '@/components/ThemeToggle';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '@/api/client';
+import { updateFaviconBadge, initializeFaviconManager } from '@/lib/favicon'; // Import favicon utilities
 
 export default function Layout() {
     const { isSidebarOpen, toggleSidebar } = useSidebar();
     const location = useLocation();
     const [alertStats, setAlertStats] = useState({ critical: 0, warning: 0, info: 0 });
+    const faviconLinkRef = useRef<HTMLLinkElement | null>(null);
 
     useEffect(() => {
+        // Initialize favicon link element if it doesn't exist
+        faviconLinkRef.current = initializeFaviconManager();
+
         fetchAlertStats();
         const interval = setInterval(fetchAlertStats, 30000); // Refresh every 30 seconds
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        // Update favicon badge whenever alertStats changes
+        if (faviconLinkRef.current) {
+            updateFaviconBadge({
+                criticalCount: alertStats.critical,
+                warningCount: alertStats.warning,
+                originalFaviconUrl: '/vite.svg' // Specify the path to your original favicon
+            }).then(dataUrl => {
+                if (faviconLinkRef.current) {
+                    faviconLinkRef.current.href = dataUrl;
+                }
+            }).catch(error => {
+                console.error("Failed to update favicon badge:", error);
+            });
+        }
+    }, [alertStats]);
 
     const fetchAlertStats = async () => {
         try {

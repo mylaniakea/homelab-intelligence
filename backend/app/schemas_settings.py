@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 class SettingsBase(BaseModel):
     providers: Dict[str, Dict[str, Any]] = {} # Initialize as empty dict
@@ -13,12 +14,16 @@ class SettingsBase(BaseModel):
     cron_monthly_report: Optional[str] = "0 4 1 * *"
 
     polling_interval: Optional[int] = 30 # Dashboard polling interval in seconds
+    alert_sound_enabled: Optional[bool] = False # Enable sound notifications for critical alerts
+    maintenance_mode_until: Optional[datetime] = None # New: Time until maintenance mode is active
 
 
 class SettingsCreate(SettingsBase):
     pass
 
 class SettingsUpdate(SettingsBase):
+    maintenance_mode_until: Optional[datetime] = None # Allow updating maintenance mode separately
+
     pass
 
 class Settings(SettingsBase):
