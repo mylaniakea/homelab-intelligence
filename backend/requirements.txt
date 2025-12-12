@@ -11,3 +11,4 @@ cryptography>=41.0.0 # For SSH Key Encryption at Rest
 pywebpush>=1.2.0 # For Web Push Notifications
 python-jose[cryptography]>=3.3.0 # For JWT tokens
 passlib[bcrypt]>=1.7.4 # For password hashing
+python-multipart>=0.0.6 # For OAuth2 form data handling
