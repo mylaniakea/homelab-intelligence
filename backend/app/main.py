@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import app.models as models
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins, thresholds, alerts, push, auth
+from app.routers import profiles, ai, settings, reports, knowledge, system, terminal, plugins, thresholds, alerts, push, auth, users
 from app.database import engine, Base, get_db
 from app.services import report_generation
 from app.services.snapshot_service import SnapshotService
@@ -95,6 +95,7 @@ async def check_thresholds():
 
 # Include Routers
 app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(profiles.router)
 app.include_router(system.router)
 app.include_router(ai.router)

@@ -13,11 +13,13 @@ import Automations from './pages/Automations';
 import Plugins from './pages/Plugins';
 import Thresholds from './pages/Thresholds';
 import Alerts from './pages/Alerts';
+import Users from './pages/Users';
 import LoginPage from './pages/LoginPage';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ConfirmDialogProvider } from '@/contexts/ConfirmDialogContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { RoleProvider } from '@/contexts/RoleContext';
 
 function App() {
     return (
@@ -25,7 +27,8 @@ function App() {
             <SidebarProvider>
                 <ConfirmDialogProvider>
                     <NotificationProvider>
-                        <Router>
+                        <RoleProvider>
+                            <Router>
                         <Routes>
                             <Route path="/login" element={<LoginPage />} />
                             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -40,10 +43,12 @@ function App() {
                                 <Route path="thresholds" element={<Thresholds />} />
                                 <Route path="alerts" element={<Alerts />} />
                                 <Route path="automations" element={<Automations />} />
+                                <Route path="users" element={<Users />} />
                                 <Route path="settings" element={<Settings />} />
                             </Route>
                         </Routes>
                         </Router>
+                        </RoleProvider>
                     </NotificationProvider>
                 </ConfirmDialogProvider>
             </SidebarProvider>

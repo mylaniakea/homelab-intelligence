@@ -1,8 +1,9 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Server, Bot, Menu, X, Settings, FileText, Brain, Network, HardDrive, Clock, Plug, AlertTriangle, Bell, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Server, Bot, Menu, X, Settings, FileText, Brain, Network, HardDrive, Clock, Plug, AlertTriangle, Bell, LogOut, User, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { useRole } from '@/contexts/RoleContext';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useState, useEffect, useRef } from 'react';
 import api from '@/api/client';
@@ -11,18 +12,17 @@ import { useNotification } from '@/contexts/NotificationContext';
 
 export default function Layout() {
     const { isSidebarOpen, toggleSidebar } = useSidebar();
+    const { user, canManageUsers } = useRole();
     const location = useLocation();
     const navigate = useNavigate();
     const { showNotification } = useNotification();
     const [alertStats, setAlertStats] = useState({ critical: 0, warning: 0, info: 0 });
-    const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
     const faviconLinkRef = useRef<HTMLLinkElement | null>(null);
 
     useEffect(() => {
         // Initialize favicon link element if it doesn't exist
         faviconLinkRef.current = initializeFaviconManager();
 
-        fetchCurrentUser();
         fetchAlertStats();
         const interval = setInterval(fetchAlertStats, 30000); // Refresh every 30 seconds
         return () => clearInterval(interval);
@@ -44,15 +44,6 @@ export default function Layout() {
             });
         }
     }, [alertStats]);
-
-    const fetchCurrentUser = async () => {
-        try {
-            const res = await api.get('/auth/me');
-            setCurrentUser(res.data);
-        } catch (error) {
-            console.error('Failed to fetch current user', error);
-        }
-    };
 
     const fetchAlertStats = async () => {
         try {
@@ -76,7 +67,7 @@ export default function Layout() {
         return 'text-green-500';
     };
 
-    const navItems = [
+    const allNavItems = [
         { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
         { icon: Network, label: 'Environment', path: '/homelab' },
         { icon: Server, label: 'Servers', path: '/profiles' },
@@ -88,8 +79,12 @@ export default function Layout() {
         { icon: AlertTriangle, label: 'Thresholds', path: '/thresholds' },
         { icon: Bell, label: 'Alerts', path: '/alerts', dynamicColor: getAlertColor() },
         { icon: Clock, label: 'Automations', path: '/automations' },
+        { icon: Users, label: 'Users', path: '/users' },
         { icon: Settings, label: 'Settings', path: '/settings' },
     ];
+
+    // Filter nav items based on user role
+    const navItems = allNavItems.filter(item => !item.adminOnly || canManageUsers);
 
     return (
         <div className="min-h-screen bg-background text-foreground flex overflow-hidden">
@@ -140,8 +135,8 @@ export default function Layout() {
                 <div className="p-2 border-t border-border">
                     <div className="flex items-center gap-3 px-3 py-2 text-sm">
                         <User size={20} className="text-muted-foreground" />
-                        {isSidebarOpen && currentUser && (
-                            <span className="flex-1 truncate text-muted-foreground">{currentUser.username}</span>
+                        {isSidebarOpen && user && (
+                            <span className="flex-1 truncate text-muted-foreground">{user.username}</span>
                         )}
                     </div>
                     <button
