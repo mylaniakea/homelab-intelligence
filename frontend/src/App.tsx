@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from '@/components/Layout';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Profiles from './pages/Profiles';
 import Intelligence from './pages/Intelligence';
@@ -12,6 +13,7 @@ import Automations from './pages/Automations';
 import Plugins from './pages/Plugins';
 import Thresholds from './pages/Thresholds';
 import Alerts from './pages/Alerts';
+import LoginPage from './pages/LoginPage';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ConfirmDialogProvider } from '@/contexts/ConfirmDialogContext';
@@ -25,7 +27,8 @@ function App() {
                     <NotificationProvider>
                         <Router>
                         <Routes>
-                            <Route path="/" element={<Layout />}>
+                            <Route path="/login" element={<LoginPage />} />
+                            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                                 <Route index element={<Dashboard />} />
                                 <Route path="homelab" element={<Homelab />} />
                                 <Route path="profiles" element={<Profiles />} />
