@@ -98,14 +98,14 @@ export default function Dashboard() {
                 />
                 <StatCard
                     title="Memory"
-                    value={`${stats?.memory.used_bytes && stats?.memory.total_bytes ? ((stats.memory.used_bytes / stats.memory.total_bytes) * 100).toFixed(1) : 0}%`}
-                    subtext={`${stats?.memory.used_bytes && stats?.memory.total_bytes ? (stats.memory.used_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${(stats?.memory.total_bytes / 1024 / 1024 / 1024).toFixed(1)} GB`}
+                    value={`${stats?.memory?.used_bytes && stats?.memory?.total_bytes ? ((stats.memory.used_bytes / stats.memory.total_bytes) * 100).toFixed(1) : stats?.hardware?.memory?.percent?.toFixed(1) || 0}%`}
+                    subtext={`${stats?.memory?.used_bytes ? (stats.memory.used_bytes / 1024 / 1024 / 1024).toFixed(1) : stats?.hardware?.memory ? (stats.hardware.memory.used / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${stats?.memory?.total_bytes ? (stats.memory.total_bytes / 1024 / 1024 / 1024).toFixed(1) : stats?.hardware?.memory ? (stats.hardware.memory.total / 1024 / 1024 / 1024).toFixed(1) : 0} GB`}
                     icon={MemoryStick} color="text-green-500"
                 />
                 <StatCard
                     title="Swap Usage"
-                    value={`${stats?.memory.swap_percent.toFixed(1)}%`}
-                    subtext={`${stats?.memory.swap_used_bytes && stats?.memory.swap_total_bytes ? (stats.memory.swap_used_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${(stats?.memory.swap_total_bytes / 1024 / 1024 / 1024).toFixed(1)} GB`}
+                    value={`${stats?.memory?.swap_percent?.toFixed(1) || 0}%`}
+                    subtext={`${stats?.memory?.swap_used_bytes ? (stats.memory.swap_used_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB / ${stats?.memory?.swap_total_bytes ? (stats.memory.swap_total_bytes / 1024 / 1024 / 1024).toFixed(1) : 0} GB`}
                     icon={Layers}
                     color="text-teal-500"
                 />
@@ -118,28 +118,28 @@ export default function Dashboard() {
                 />
                 <StatCard
                     title="Load Average (1min)"
-                    value={stats?.load_average['1min'].toFixed(2)}
-                    subtext={`5min: ${stats?.load_average['5min'].toFixed(2)}, 15min: ${stats?.load_average['15min'].toFixed(2)}`}
+                    value={stats?.load_average?.['1min']?.toFixed(2) || 'N/A'}
+                    subtext={`5min: ${stats?.load_average?.['5min']?.toFixed(2) || 'N/A'}, 15min: ${stats?.load_average?.['15min']?.toFixed(2) || 'N/A'}`}
                     icon={Activity}
                     color="text-red-500"
                 />
                 <StatCard
                     title="Processes"
-                    value={stats?.processes.count}
+                    value={stats?.processes?.count || 'N/A'}
                     subtext="Running processes"
                     icon={Users}
                     color="text-indigo-500"
                 />
                 <StatCard
                     title="Open File Descriptors"
-                    value={stats?.file_descriptors.open}
-                    subtext={`Max: ${stats?.file_descriptors.max}`}
+                    value={stats?.file_descriptors?.open || 'N/A'}
+                    subtext={`Max: ${stats?.file_descriptors?.max || 'N/A'}`}
                     icon={Clipboard}
                     color="text-pink-500"
                 />
                 <StatCard
                     title="Uptime"
-                    value={`${Math.floor(stats!.uptime_seconds / 3600 / 24)}d ${Math.floor((stats!.uptime_seconds / 3600) % 24)}h ${Math.floor((stats!.uptime_seconds / 60) % 60)}m`}
+                    value={stats?.uptime_seconds ? `${Math.floor(stats.uptime_seconds / 3600 / 24)}d ${Math.floor((stats.uptime_seconds / 3600) % 24)}h ${Math.floor((stats.uptime_seconds / 60) % 60)}m` : 'N/A'}
                     subtext="Total system uptime"
                     icon={Clock}
                     color="text-purple-500"
